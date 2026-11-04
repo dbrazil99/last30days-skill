@@ -67,6 +67,28 @@ def gather_candidates(county: dict, s: Settings, registry: list[Candidate], use_
     return [c for c in found if geom.contains(Point(c.lon, c.lat))]
 
 
+def resolve_parcel(psrc, c: Candidate):
+    """Parcel for a candidate point. Address geocodes often land in the street or on the house
+    next door, so if the hit isn't a park-coded or sizable parcel, look within ~150 m for one."""
+    from .geo import area_acres
+
+    p = psrc.at_point(c.lat, c.lon)
+    if p is not None and (p.landuse_flag or area_acres(p.geom) >= 2):
+        return p
+    near = getattr(psrc, "near", None)
+    if near is None:
+        return p
+    pt = Point(c.lon, c.lat)
+    pool = near(c.lat, c.lon, 150)
+    coded = [q for q in pool if q.landuse_flag]
+    if coded:
+        return min(coded, key=lambda q: q.geom.distance(pt))
+    big = [q for q in pool if area_acres(q.geom) >= 2 and q.geom.distance(pt) < 0.0006]  # ~60 m
+    if big:
+        return min(big, key=lambda q: q.geom.distance(pt))
+    return p
+
+
 def run_county(county: dict, s: Settings, registry: list[Candidate], parcels_dir: Path | None = None,
                use_places: bool = True, vision_limit: int = 0, log=print) -> list[ParkResult]:
     fips = county["fips"]
@@ -84,7 +106,7 @@ def run_county(county: dict, s: Settings, registry: list[Candidate], parcels_dir
     parcels = {}
     unresolved: list[Candidate] = []
     for c in candidates:
-        p = psrc.at_point(c.lat, c.lon)
+        p = resolve_parcel(psrc, c)
         if p is None:
             unresolved.append(c)
             continue

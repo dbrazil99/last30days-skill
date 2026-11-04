@@ -56,13 +56,10 @@ Count carefully row by row. If trees or image quality make counts uncertain, say
 def naip_chip(result: ParkResult) -> tuple[bytes, float] | None:
     geom = result.parcel.geom
     w, s, e, n = bbox_of(geom, pad_m=25)
+    poly = {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}
     r = requests.post(
         STAC,
-        # Pick the newest NAIP tile that covers the parcel's center (a bbox search can return a
-        # neighboring tile that only clips the edge and renders blank).
-        json={"collections": ["naip"], "limit": 1,
-              "intersects": {"type": "Point", "coordinates": [geom.representative_point().x,
-                                                               geom.representative_point().y]},
+        json={"collections": ["naip"], "intersects": poly, "limit": 20,
               "sortby": [{"field": "properties.datetime", "direction": "desc"}]},
         timeout=60,
     )
@@ -70,7 +67,9 @@ def naip_chip(result: ParkResult) -> tuple[bytes, float] | None:
     feats = r.json().get("features", [])
     if not feats:
         return None
-    item = feats[0]["id"]
+    newest_year = feats[0]["properties"]["datetime"][:4]
+    items = [f["id"] for f in feats if f["properties"]["datetime"][:4] == newest_year]
+
     width_m = (e - w) * 111_320 * math.cos(math.radians((s + n) / 2))
     height_m = (n - s) * 110_540
     native = max(width_m, height_m) / M_PER_PX
@@ -78,14 +77,19 @@ def naip_chip(result: ParkResult) -> tuple[bytes, float] | None:
     px = max(64, int(width_m / M_PER_PX * scale))
     py = max(64, int(height_m / M_PER_PX * scale))
     url = RENDER.format(w=w, s=s, e=e, n=n, px=px, py=py)
-    img = requests.get(
-        url,
-        params={"collection": "naip", "item": item, "assets": "image", "asset_bidx": "image|1,2,3"},
-        timeout=120,
-    )
-    img.raise_for_status()
-
-    im = Image.open(io.BytesIO(img.content)).convert("RGB")
+    im = Image.new("RGBA", (px, py), (0, 0, 0, 255))
+    for item in items:  # NAIP tiles abut; paste each tile's valid pixels into one chip
+        tile = requests.get(
+            url,
+            params={"collection": "naip", "item": item, "assets": "image",
+                    "asset_bidx": "image|1,2,3", "nodata": 0},
+            timeout=120,
+        )
+        if tile.status_code != 200:
+            continue
+        layer = Image.open(io.BytesIO(tile.content)).convert("RGBA").resize((px, py))
+        im.alpha_composite(layer)
+    im = im.convert("RGB")
     draw = ImageDraw.Draw(im)
     polys = getattr(geom, "geoms", [geom])
     for poly in polys:

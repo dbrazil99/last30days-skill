@@ -114,6 +114,11 @@ class ParcelFile:
         hits = self._rows("ST_Contains(_g, ST_Point(?, ?))", [lon, lat])
         return hits[0] if hits else None
 
+    def near(self, lat: float, lon: float, radius_m: float = 150) -> list[Parcel]:
+        from shapely.geometry import Point
+        deg = radius_m / 111_000
+        return self._rows("ST_Intersects(_g, ST_GeomFromText(?))", [Point(lon, lat).buffer(deg).wkt])
+
     def neighbors(self, parcel: Parcel) -> list[Parcel]:
         wkt = parcel.geom.buffer(0.00003).wkt  # ~3 m, bridges slivers between adjacent parcels
         hits = self._rows("ST_Intersects(_g, ST_GeomFromText(?))", [wkt])

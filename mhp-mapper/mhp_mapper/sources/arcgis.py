@@ -105,6 +105,13 @@ class ArcGISParcels:
         hits = self._parcels(data)
         return hits[0] if hits else None
 
+    def near(self, lat: float, lon: float, radius_m: float = 150) -> list[Parcel]:
+        data = self._get({"where": "1=1", "geometry": json.dumps({"x": lon, "y": lat}),
+                          "geometryType": "esriGeometryPoint", "inSR": 4326, "distance": radius_m,
+                          "units": "esriSRUnit_Meter", "spatialRel": "esriSpatialRelIntersects",
+                          "resultRecordCount": 300})
+        return self._parcels(data)
+
     def neighbors(self, parcel: Parcel) -> list[Parcel]:
         g = parcel.geom.buffer(0.00003)
         ring = [list(c) for c in g.exterior.coords] if g.geom_type == "Polygon" else \
