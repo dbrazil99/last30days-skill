@@ -168,6 +168,8 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("rollup", help="combine all counties into out/ALL_parks.csv")
     sub.add_parser("budget", help="show this month's spend vs. hard caps")
+    sc = sub.add_parser("score", help="accuracy vs. registry site counts for a county")
+    sc.add_argument("county_dir")
 
     a = p.parse_args(argv)
     if a.cmd == "check":
@@ -176,6 +178,9 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_run(a)
     if a.cmd == "apply-review":
         print(f"updated {export.apply_review(Path(a.county_dir))} rows")
+        return 0
+    if a.cmd == "score":
+        print(json.dumps(export.score(Path(a.county_dir)), indent=2))
         return 0
     if a.cmd == "budget":
         print(json.dumps(budget.report(), indent=2))

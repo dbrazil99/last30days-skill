@@ -56,10 +56,10 @@ def fetch(bbox: tuple[float, float, float, float], urls: tuple[str, ...]) -> lis
     w, s, e, n = bbox
     q = QUERY.format(s=s, w=w, n=n, e=e)
     last_err: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(2):
         for url in urls:
             try:
-                r = requests.post(url, data={"data": q}, headers={"User-Agent": "mhp-mapper/0.1"}, timeout=360)
+                r = requests.post(url, data={"data": q}, headers={"User-Agent": "mhp-mapper/0.1"}, timeout=150)
                 if r.status_code == 200:
                     return parse(r.json())
                 last_err = RuntimeError(f"{url} -> HTTP {r.status_code}")

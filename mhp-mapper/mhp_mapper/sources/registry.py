@@ -12,6 +12,7 @@ If the file has no lat/lon columns, rows are geocoded with the free US Census ge
 from __future__ import annotations
 
 import csv
+import io
 import json
 from pathlib import Path
 
@@ -20,6 +21,7 @@ import requests
 from ..models import Candidate
 
 CENSUS_GEOCODER = "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+CENSUS_BATCH = "https://geocoding.geo.census.gov/geocoder/locations/addressbatch"
 
 
 def parse_mapping(spec: str) -> dict[str, str]:
@@ -63,19 +65,69 @@ class Geocoder:
         except (requests.RequestException, ValueError, KeyError):
             result = None
         self.cache[address] = list(result) if result else None
+        self._save()
+        return result
+
+    def _save(self) -> None:
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self.cache_path.write_text(json.dumps(self.cache))
-        return result
+
+    def batch(self, rows: list[tuple[str, str, str, str]]) -> None:
+        """Geocode (street, city, state, zip) rows via the Census batch API, 1,000 per request."""
+        todo = [r for r in rows if _key(*r) not in self.cache]
+        for i in range(0, len(todo), 1000):
+            chunk = todo[i:i + 1000]
+            buf = io.StringIO()
+            w = csv.writer(buf)
+            for j, (street, city, state, zip_) in enumerate(chunk):
+                w.writerow([j, street, city, state, zip_])
+            try:
+                r = requests.post(CENSUS_BATCH, data={"benchmark": "Public_AR_Current"},
+                                  files={"addressFile": ("a.csv", buf.getvalue(), "text/csv")}, timeout=600)
+                r.raise_for_status()
+            except requests.RequestException as exc:
+                print(f"  census batch geocode failed ({exc}); falling back to one-by-one")
+                return
+            for rec in csv.reader(io.StringIO(r.text)):
+                if len(rec) < 3:
+                    continue
+                key = _key(*chunk[int(rec[0])])
+                if rec[2] == "Match" and len(rec) > 5 and "," in rec[5]:
+                    lon, lat = rec[5].split(",")
+                    self.cache[key] = [float(lat), float(lon)]
+                else:
+                    self.cache[key] = None
+            self._save()
+
+
+def _norm_type(t: str) -> str:
+    t = t.lower()
+    has_rv = "rv" in t or "recreational" in t or "camp" in t
+    has_mh = "mobile" in t or "mh" in t or "manufactured" in t
+    if has_rv and has_mh:
+        return "mixed"
+    return "rv" if has_rv else ("mhp" if has_mh else "unknown")
+
+
+def _key(street: str, city: str, state: str, zip_: str) -> str:
+    return ", ".join(x for x in [street, city, state, zip_] if x)
 
 
 def load(path: Path, name: str, mapping: dict[str, str], geocoder: Geocoder | None = None,
          park_type: str = "unknown") -> list[Candidate]:
     out = []
     with open(path, newline="", encoding="utf-8-sig") as fh:
-        for i, row in enumerate(csv.DictReader(fh)):
-            get = lambda k: (row.get(mapping[k], "") if k in mapping else "").strip()  # noqa: E731
+        rows = list(csv.DictReader(fh))
+
+    def getter(row):
+        return lambda k: (str(row.get(mapping[k], "") or "") if k in mapping else "").strip()
+
+    if geocoder and "lat" not in mapping:
+        geocoder.batch([(getter(r)("address"), getter(r)("city"), getter(r)("state"), getter(r)("zip")) for r in rows])
+    for i, row in enumerate(rows):
+            get = getter(row)
             lat, lon = get("lat"), get("lon")
-            address = ", ".join(filter(None, [get("address"), get("city"), get("state"), get("zip")]))
+            address = _key(get("address"), get("city"), get("state"), get("zip"))
             if lat and lon:
                 coords = (float(lat), float(lon))
             elif geocoder and address:
@@ -84,7 +136,7 @@ def load(path: Path, name: str, mapping: dict[str, str], geocoder: Geocoder | No
                 coords = None
             if not coords:
                 continue
-            ptype = get("type").lower() if "type" in mapping else park_type
+            ptype = _norm_type(get("type")) if "type" in mapping else park_type
             out.append(
                 Candidate(
                     source=f"registry:{name}",

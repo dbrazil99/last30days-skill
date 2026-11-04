@@ -163,3 +163,27 @@ def rollup(out_root: Path) -> Path:
     path = out_root / "ALL_parks.csv"
     _write_csv(path, PARK_FIELDS, rows)
     return path
+
+
+def score(county_dir: Path) -> dict:
+    """Accuracy vs. registry site counts, for parks that have one."""
+    rows = [r for r in csv.DictReader(open(county_dir / "parks.csv")) if r.get("registry_units")]
+    errs, statuses = [], {}
+    for r in rows:
+        reg = float(r["registry_units"])
+        ours = float(r["final_mh"] or 0) + float(r["final_rv"] or 0)
+        if reg > 0:
+            errs.append((ours - reg) / reg)
+        statuses[r["status"]] = statuses.get(r["status"], 0) + 1
+    if not errs:
+        return {"parks_with_registry_count": 0}
+    abs_e = sorted(abs(e) for e in errs)
+    within = lambda t: round(sum(e <= t for e in abs_e) / len(abs_e), 3)  # noqa: E731
+    return {
+        "parks_with_registry_count": len(errs),
+        "status_breakdown": statuses,
+        "median_abs_error": round(abs_e[len(abs_e) // 2], 3),
+        "within_10pct": within(0.10),
+        "within_20pct": within(0.20),
+        "mean_signed_error": round(sum(errs) / len(errs), 3),  # negative = we undercount
+    }
