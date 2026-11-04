@@ -12,6 +12,7 @@ import time
 
 import requests
 
+from .. import budget
 from ..models import Candidate
 
 URL = "https://places.googleapis.com/v1/places:searchText"
@@ -46,6 +47,7 @@ def _search(key: str, text: str, rect: tuple[float, float, float, float]) -> lis
     headers = {"X-Goog-Api-Key": key, "X-Goog-FieldMask": FIELDS}
     results: list[dict] = []
     while True:
+        budget.guard("google_places")
         r = requests.post(URL, json=body, headers=headers, timeout=60)
         r.raise_for_status()
         data = r.json()

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import requests
 
-from . import export, geo
+from . import budget, export, geo
 from .config import get_settings
 from .sources import registry as registry_mod
 
@@ -42,6 +42,8 @@ def _run_one(county: dict, registry: list, parcels_dir: str | None, use_places: 
     try:
         run_county(county, s, registry, Path(parcels_dir) if parcels_dir else None, use_places, vision)
         return county["fips"], "ok"
+    except budget.BudgetExceeded as exc:
+        return county["fips"], f"BUDGET CAP: {exc}"
     except Exception as exc:
         (s.out_dir / county["fips"]).mkdir(parents=True, exist_ok=True)
         (s.out_dir / county["fips"] / "ERROR.txt").write_text(traceback.format_exc())
@@ -61,7 +63,12 @@ def cmd_run(a) -> int:
     registry = _load_registries(a.registry or [], s)
     print(f"{len(counties)} counties to run with {a.workers} worker(s)")
     if a.workers <= 1:
-        results = [_run_one(c, registry, a.parcels_dir, not a.no_places, a.vision) for c in counties]
+        results = []
+        for c in counties:
+            results.append(_run_one(c, registry, a.parcels_dir, not a.no_places, a.vision))
+            if results[-1][1].startswith("BUDGET CAP"):
+                print(f"STOPPED: {results[-1][1]}")
+                break
     else:
         results = []
         with ProcessPoolExecutor(max_workers=a.workers) as pool:
@@ -69,6 +76,11 @@ def cmd_run(a) -> int:
             for f in as_completed(futs):
                 results.append(f.result())
                 print(f"  {results[-1][0]}: {results[-1][1]}  ({len(results)}/{len(counties)})")
+                if results[-1][1].startswith("BUDGET CAP"):
+                    print(f"STOPPED: {results[-1][1]}")
+                    for other in futs:
+                        other.cancel()
+                    break
     failed = [r for r in results if r[1] != "ok"]
     print(f"finished: {len(results) - len(failed)} ok, {len(failed)} failed")
     for f in failed:
@@ -155,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
     ar.add_argument("county_dir")
 
     sub.add_parser("rollup", help="combine all counties into out/ALL_parks.csv")
+    sub.add_parser("budget", help="show this month's spend vs. hard caps")
 
     a = p.parse_args(argv)
     if a.cmd == "check":
@@ -163,6 +176,9 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_run(a)
     if a.cmd == "apply-review":
         print(f"updated {export.apply_review(Path(a.county_dir))} rows")
+        return 0
+    if a.cmd == "budget":
+        print(json.dumps(budget.report(), indent=2))
         return 0
     if a.cmd == "rollup":
         path = export.rollup(get_settings().out_dir)

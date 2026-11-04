@@ -124,6 +124,29 @@ pip install pytest
 python -m pytest tests
 ```
 
+## Hard spending limits (enforced in code)
+
+Every paid call (Google Places, the parcel API, Claude) goes through `mhp_mapper/budget.py` before it is made. Spending is logged per calendar month in `data/spend_ledger.json`, which all parallel workers share. If a call would exceed a cap, the bot **stops** instead of spending. Check spending at any time:
+
+```bash
+python -m mhp_mapper budget
+```
+
+| | Phase 1: pilot (now) | Phase 2: national (only after Dylan approves) |
+|---|---|---|
+| **Overall, per month** | **$100** | **$3,000** |
+| Claude vision | $50 | $1,000 |
+| Google Places | $0: free tier only, capped at 4,500 calls/month | $300 |
+| Parcel API (ReportAll/Regrid) | $0: trial only, capped at 1,000 lookups | $1,500, prepaid with no overage |
+| Compute | $0 (laptop) | $200 (one VM, shut down after the run) |
+
+The caps live in `.env` (`MHP_CAP_*`; see `.env.example`). Also set the same limits inside each vendor's own console:
+- an Anthropic monthly spend limit
+- a Google Cloud daily quota and budget alert
+- prepaid-only parcel packages
+
+That way the caps hold even if someone runs other code.
+
 ---
 
 ## 4. Timeline to cover the US (estimate)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from shapely.geometry import Point
 
-from . import classify, export
+from . import budget, classify, export
 from .buildings import BuildingStore
 from .config import Settings
 from .models import Candidate, ParkResult
@@ -130,6 +130,8 @@ def _apply_vision(results: list[ParkResult], s: Settings, out_dir: Path, limit: 
     for r in queue:
         try:
             v = vision.count_with_claude(r, s.claude_model, out_dir / "chips")
+        except budget.BudgetExceeded:
+            raise
         except Exception as exc:  # network/API errors shouldn't kill the county
             log(f"  vision failed for {r.park_id}: {exc}")
             continue

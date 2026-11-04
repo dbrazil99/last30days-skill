@@ -21,6 +21,7 @@ import requests
 from shapely import wkt as shapely_wkt
 from shapely.geometry import shape
 
+from .. import budget
 from ..models import Parcel
 
 # County use descriptions vary wildly; these phrases indicate a *park* (many units on one
@@ -130,6 +131,7 @@ class RegridAPI:
         self.fields = REGRID_FIELDS
 
     def _features(self, endpoint: str, params: dict) -> list[Parcel]:
+        budget.guard("parcel_api")
         r = requests.get(f"{self.BASE}/{endpoint}", params={**params, "token": self.token}, timeout=60)
         r.raise_for_status()
         feats = (r.json().get("parcels") or {}).get("features", [])

@@ -16,6 +16,7 @@ from pathlib import Path
 import requests
 from PIL import Image, ImageDraw
 
+from . import budget
 from .geo import bbox_of
 from .models import ParkResult
 
@@ -106,6 +107,7 @@ def count_with_claude(result: ParkResult, model: str, save_dir: Path | None = No
         save_dir.mkdir(parents=True, exist_ok=True)
         (save_dir / f"{result.park_id}.png").write_bytes(png)
 
+    budget.guard("claude")
     client = anthropic.Anthropic()
     response = client.messages.create(
         model=model,
@@ -120,6 +122,7 @@ def count_with_claude(result: ParkResult, model: str, save_dir: Path | None = No
             ],
         }],
     )
+    budget.settle_claude(model, response.usage.input_tokens, response.usage.output_tokens)
     if response.stop_reason == "refusal":
         return None
     text = next((b.text for b in response.content if b.type == "text"), "")
