@@ -1,0 +1,18 @@
+{
+  "_comment": "Free county/state ArcGIS parcel services, keyed by 5-digit county FIPS. Add one per pilot county.",
+  "06065": {
+    "name": "Riverside County, CA",
+    "url": "https://gis.countyofriverside.us/arcgis_mapping/rest/services/OpenData/Assessor/MapServer/50",
+    "park_where": "CLASS_CODE LIKE '%Manufactured Home Park' OR CLASS_CODE = 'Private Campground'",
+    "fields": {
+      "id": "APN",
+      "apn": "APN",
+      "mail_address": ["MAIL_STREET", "MAIL_CITY"],
+      "site_address": "SITUS_STREET",
+      "city": "SITUS_CITY",
+      "zip": "ZIP_CODE",
+      "use_desc": "CLASS_CODE"
+    },
+    "notes": "Owner names are not published by the county. 'RV Park Lot (MV)' = individually owned RV lots (not parks) and is deliberately excluded."
+  }
+}
