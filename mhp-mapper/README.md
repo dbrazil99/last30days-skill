@@ -60,6 +60,19 @@ For each county:
 
 **Why Google Maps is for people only:** Google's terms prohibit pulling data out of its satellite imagery, so the automated count uses public-domain NAIP imagery. Google Maps is for a reviewer to look at, and Places is for discovery.
 
+### Free county parcel data (`counties.json`)
+
+Most counties publish parcels on a free ArcGIS server. Add a county to `counties.json` with:
+- the layer URL
+- the filter that picks out park parcels
+- the field names
+
+The bot then queries the county live, with no download, no account and no cost. Riverside County, CA (06065) is set up as the pilot. It has 729 parcels coded "Manufactured Home Park".
+
+Two things to know about California counties:
+- **They don't publish owner names.** The bot uses the mailing address to spot a park spread across adjacent parcels with the same owner. Owner names can be looked up later on the parcel API, for confirmed parks only.
+- **"RV Park Lot" parcels are excluded.** These are individually owned RV lots, not parks.
+
 ### Outputs (`out/<county FIPS>/`)
 
 | File | What it is |

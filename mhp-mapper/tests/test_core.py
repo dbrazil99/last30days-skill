@@ -86,7 +86,7 @@ def test_park_use_regex():
     for yes in ["MOBILE HOME PARK", "Mobile Home Court", "TRAILER PARK", "MH PARK", "RV PARK",
                 "Manufactured Housing Community", "CAMPGROUND", "MOBILEHOME PARK"]:
         assert is_park_use(yes), yes
-    for no in ["MOBILE HOME", "SINGLE FAMILY RESIDENCE", "MOBILE HOME ON OWN LOT", "VACANT", ""]:
+    for no in ["MOBILE HOME", "RV Park Lot (MV)", "SINGLE FAMILY RESIDENCE", "MOBILE HOME ON OWN LOT", "VACANT", ""]:
         assert not is_park_use(no), no
 
 

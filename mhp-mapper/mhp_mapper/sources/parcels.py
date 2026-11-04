@@ -30,7 +30,7 @@ PARK_USE_RE = re.compile(
     r"mobile\s*home\s*(park|court|community|cmty|pk|ct)|mobilehome\s*park|"
     r"trailer\s*(park|court|pk|ct)|\bm\.?h\.?\s*(park|pk|court)\b|\bmhp\b|"
     r"manufactured\s*(home|housing)\s*(park|community|comm)|"
-    r"\brv\s*(park|resort|pk)\b|recreational\s*vehicle\s*park|travel\s*trailer\s*park|"
+    r"\brv\s*(park|resort|pk)\b(?!\s*lot)|recreational\s*vehicle\s*park|travel\s*trailer\s*park|"
     r"campground|camp\s*ground",
     re.IGNORECASE,
 )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -13,6 +14,7 @@ from .buildings import BuildingStore
 from .config import Settings
 from .models import Candidate, ParkResult
 from .sources import osm, places
+from .sources.arcgis import ArcGISParcels
 from .sources.parcels import ParcelFile, RegridAPI
 
 
@@ -27,6 +29,11 @@ def _norm_owner(o: str) -> str:
 
 
 def parcel_source_for(county: dict, s: Settings, parcels_dir: Path | None):
+    cfg_path = Path(__file__).resolve().parent.parent / "counties.json"
+    if cfg_path.exists():
+        cfg = json.loads(cfg_path.read_text()).get(county["fips"])
+        if cfg:
+            return ArcGISParcels(cfg["url"], cfg["fields"], cfg.get("park_where"))
     if parcels_dir:
         st = county["state"].lower()
         keys = [county["fips"], f"{st}_{_slug(county['name']).replace('-', '_')}", f"{st}_{_slug(county['name'])}"]
@@ -100,10 +107,11 @@ def run_county(county: dict, s: Settings, registry: list[Candidate], parcels_dir
         r = ParkResult(park_id=f"{fips}-{pid}", county_fips=fips, state=county["state"],
                        parcel=parcel, candidates=by_parcel[pid], footprints=fps)
         # Multi-parcel check: adjacent parcel, same owner, also full of MH-shaped footprints.
-        owner = _norm_owner(parcel.owner)
+        owner_key = lambda p: _norm_owner(p.owner) or _norm_owner(p.mail_address)  # noqa: E731
+        owner = owner_key(parcel)
         if owner:
             for nb in psrc.neighbors(parcel):
-                if _norm_owner(nb.owner) == owner:
+                if owner_key(nb) == owner:
                     nb_mh = sum(classify.classify_footprint(g).kind in ("mobile_home", "rv")
                                 for g in store.within(nb.geom))
                     if nb_mh >= s.min_units_for_park or nb.landuse_flag:
