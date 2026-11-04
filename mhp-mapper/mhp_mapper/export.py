@@ -14,7 +14,7 @@ from .models import Candidate, ParkResult
 
 PARK_FIELDS = [
     "park_id", "status", "confidence", "name", "park_type", "final_mh", "final_rv", "count_method",
-    "footprint_mh", "footprint_rv", "vision_mh", "vision_rv", "registry_units",
+    "footprint_mh", "footprint_rv", "vision_mh", "vision_rv", "vision_vacant", "registry_units",
     "apn", "owner", "mail_address", "site_address", "city", "state", "zip", "county_fips",
     "acres", "use_desc", "multi_parcel", "sources", "lat", "lon", "google_maps", "reasons",
 ]
@@ -33,7 +33,7 @@ def park_row(r: ParkResult) -> dict:
         "park_id": r.park_id, "status": r.status, "confidence": r.confidence, "name": r.name,
         "park_type": r.park_type, "final_mh": mh, "final_rv": rv, "count_method": method,
         "footprint_mh": r.mh_count, "footprint_rv": r.rv_count, "vision_mh": r.vision_mh,
-        "vision_rv": r.vision_rv, "registry_units": r.registry_units, "apn": r.parcel.apn,
+        "vision_rv": r.vision_rv, "vision_vacant": r.vision_vacant, "registry_units": r.registry_units, "apn": r.parcel.apn,
         "owner": r.parcel.owner, "mail_address": r.parcel.mail_address,
         "site_address": r.parcel.site_address or next((x.address for x in r.candidates if x.address), ""),
         "city": r.parcel.city, "state": r.state, "zip": r.parcel.zip, "county_fips": r.county_fips,
@@ -171,7 +171,10 @@ def score(county_dir: Path) -> dict:
     errs, statuses = [], {}
     for r in rows:
         reg = float(r["registry_units"])
+        # Registry figures count spaces, so add vacant pads when the vision step counted them.
         ours = float(r["final_mh"] or 0) + float(r["final_rv"] or 0)
+        if r.get("count_method") == "vision_model":
+            ours += float(r.get("vision_vacant") or 0)
         if reg > 0:
             errs.append((ours - reg) / reg)
         statuses[r["status"]] = statuses.get(r["status"], 0) + 1

@@ -63,6 +63,7 @@ class ParkResult:
     registry_units: int | None = None
     vision_mh: int | None = None
     vision_rv: int | None = None
+    vision_vacant: int | None = None
     reviewer_mh: int | None = None
     reviewer_rv: int | None = None
     confidence: float = 0.0

@@ -154,26 +154,46 @@ def run_county(county: dict, s: Settings, registry: list[Candidate], parcels_dir
 
 
 def _apply_vision(results: list[ParkResult], s: Settings, out_dir: Path, limit: int, log) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
     from . import vision
 
-    queue = sorted((r for r in results if r.status == "REVIEW"), key=lambda r: -r.confidence)[:limit]
-    for r in queue:
+    # Parks where a registry or land-use code says "park" but footprints are missing go first:
+    # that is where the free building data is known to have gaps.
+    def priority(r: ParkResult):
+        gap = (r.registry_units or r.parcel.landuse_flag) and r.mh_count + r.rv_count < s.min_units_for_park
+        return (0 if gap else 1, -r.confidence)
+
+    queue = sorted((r for r in results if r.status == "REVIEW"), key=priority)[:limit]
+    log(f"  vision: {len(queue)} parks")
+
+    def one(r: ParkResult):
         try:
-            v = vision.count_with_claude(r, s.claude_model, out_dir / "chips")
-        except budget.BudgetExceeded:
-            raise
+            return r, vision.count_with_claude(r, s.claude_model, out_dir / "chips"), None
+        except budget.BudgetExceeded as exc:
+            return r, None, exc
         except Exception as exc:  # network/API errors shouldn't kill the county
             log(f"  vision failed for {r.park_id}: {exc}")
-            continue
+            return r, None, None
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        outcomes = list(pool.map(one, queue))
+    stop = next((e for _, _, e in outcomes if e), None)
+    for r, v, _ in outcomes:
         if not v:
             continue
-        r.vision_mh, r.vision_rv = v["mobile_home_count"], v["rv_count"]
-        r.reasons.append(f"vision ({v['confidence']}): {v['mobile_home_count']} MH, {v['rv_count']} RV - {v['notes']}")
-        if v["confidence"] == "high":
+        r.vision_mh, r.vision_rv, r.vision_vacant = v["mobile_home_count"], v["rv_count"], v["vacant_pads"]
+        r.reasons.append(f"vision ({v['confidence']}): {r.vision_mh} MH, {r.vision_rv} RV, "
+                         f"{r.vision_vacant} vacant pads - {v['notes']}")
+        if v["confidence"] in ("high", "medium"):
             if not v["is_mobile_home_or_rv_park"]:
-                r.status = "REJECTED"
-            elif not r.multi_parcel and (
-                not r.registry_units
-                or abs(r.vision_mh + r.vision_rv - r.registry_units) / r.registry_units <= s.registry_tolerance
-            ):
-                r.status = "CONFIRMED"
+                r.status = "REJECTED" if v["confidence"] == "high" else r.status
+            else:
+                spaces = r.vision_mh + r.vision_rv + r.vision_vacant
+                if not r.multi_parcel and (
+                    not r.registry_units
+                    or abs(spaces - r.registry_units) / r.registry_units <= s.registry_tolerance
+                ):
+                    r.status = "CONFIRMED"
+    if stop:
+        raise stop
